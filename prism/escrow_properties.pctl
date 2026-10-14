@@ -1,0 +1,62 @@
+// ============================================================================
+// Proprietà PCTL per Sistema Escrow/Pagamenti
+// Corrette per SINTASSI PRISM RIGOROSA (DTMC) con FILTRI VALIDI
+// ============================================================================
+
+// S1: "Single Payment" - Safety
+// "Per tutti gli stati 's' dove stato=1, la probabilità che il prossimo stato sia 1 è 1.0 (certezza)"
+const double safety_single_payment;
+filter(forall, stato=1 => P>=1 [ X stato=1 ])
+
+// S2: "State Exclusivity"
+// Verifica booleana globale
+const double safety_state_exclusivity;
+P>=1 [ G !((stato=1 & stato=2) | (stato=1 & stato=3) | (stato=2 & stato=3)) ]
+
+// S3: "Evidence Before Payment"
+const double safety_evidence_required;
+filter(forall, stato=1 => evidenze_complete)
+
+// S4: "Bounded Failed Attempts"
+const double safety_bounded_attempts;
+P>=1 [ G (tentativi_falliti <= 3) ]
+
+// S6: "Cancellation Requires Zero Evidence"
+const double safety_cancellation_condition;
+filter(forall, stato=2 => !evidenze_complete)
+
+// G1: "Eventual Resolution" (Probabilità di raggiungere uno stato finale)
+const double guarantee_eventual_resolution;
+P=? [ F (stato=1 | stato=2 | stato=3) ]
+
+// G2: "Refund After Timeout"
+// "Qual è la PROBABILITÀ MINIMA di ottenere un rimborso... purché siamo ancora in attesa (stato=0) e non a fine tempo?"
+const double guarantee_refund_on_timeout;
+filter(min, P=? [ F stato=3 ], stato=0 & timeout_scaduto & !evidenze_complete & tempo < 360)
+
+// G3: "Refund After 3 Failures"
+// "Qual è la PROBABILITÀ MINIMA di rimborso... purché siamo ancora in attesa (stato=0)?"
+const double guarantee_refund_on_failures;
+filter(min, P=? [ F stato=3 ], stato=0 & tentativi_falliti=3 & tempo < 360)
+
+// G4: "Refund on Courier Inactivity"
+// "Qual è la PROBABILITÀ MINIMA di rimborso... purché siamo ancora in attesa (stato=0)?"
+// IMPORTANTE: stato=0 esclude i casi in cui la transazione è GIÀ ANDATA A BUON FINE (stato=1)
+const double guarantee_refund_on_inactivity;
+filter(min, P=? [ F stato=3 ], stato=0 & evidenze_complete & tentativi_falliti=0 & tempo>=336 & tempo < 360)
+
+// L1: "Evidence Eventually Received"
+const double liveness_evidence_arrival;
+P=? [ F<=168 evidenze_complete ]
+
+// L2: "Sender Protection"
+const double liveness_sender_protection;
+P=? [ F<=336 (stato=1 | stato=2 | stato=3) ]
+
+// Rewards (CUMULATIVE per simulation finite horizon)
+// Usiamo C<=360 invece di F per evitare "Infinite" se rimaniamo bloccati nel loop finale del tempo
+const double expected_resolution_time;
+R{"time_to_resolution"}=? [ C<=360 ]
+
+const double expected_failed_attempts;
+R{"failed_attempts_counter"}=? [ C<=360 ]
